@@ -700,7 +700,6 @@ class PacUtil(object):
         function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
-#logo
 class selfDecode(object):
     def decode(self,raw,step):
         list = [ 0 for i in range(len(raw))]
@@ -743,7 +742,7 @@ class selfDecode(object):
     def iniConfig(self,amount,current):
         readCheck = open("config.ini")
         oldCurrent = str(current)
-        current =random.randrange(0,amount)
+        current=random.randrange(0,amount)
         if current >= amount:
             current = 0
         try:
@@ -1061,7 +1060,7 @@ class HTTPUtil(object):
                 else:
                     if i == 0:
                         # only output first error
-                        logging.warning('create_connection to %s return %r, try again.', addrs, result)
+                        logging.warning('create_connection to %s return %r, try again.', '127.0.0.1', result)
 
     def create_ssl_connection(self, address, timeout=None, source_address=None, **kwargs):
         connection_cache_key = kwargs.get('cache_key')
@@ -1208,7 +1207,7 @@ class HTTPUtil(object):
                 else:
                     if i == 0:
                         # only output first error
-                        logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
+                        logging.warning('create_ssl_connection to %s return %r, try again.', '127.0.0.1', result)
 
     def __create_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
         host, port = address
