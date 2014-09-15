@@ -1429,9 +1429,10 @@ class Common(object):
         self.GAE_LISTPASSWORD = list(range(self.GAE_APPIDAMT))
         for i in range(0,self.GAE_APPIDAMT):
             self.GAE_LISTAPPID[i] = re.findall(r'[\w\-\.]+', decoder.process(self.CONFIG.get('account' + str(i+1), 'appid')).replace('.appspot.com', ''))
-            self.GAE_LISTPASSWORD[i] = decoder.decode(decoder.decode(base64.decodestring(decoder.decode(decoder.decode(self.CONFIG.get('account' + str(i+1), 'password').replace('$','='),3),5)),3),5).strip()
+            self.GAE_LISTPASSWORD[i] = decoder.process(self.CONFIG.get('account' + str(i+1), 'password')).strip()
         self.GAE_APPIDS = self.GAE_LISTAPPID[self.GAE_APPIDCUT]
         self.GAE_PASSWORD = self.GAE_LISTPASSWORD[self.GAE_APPIDCUT]
+        #print self.GAE_PASSWORD
         decoder.iniConfig(self.GAE_APPIDAMT,self.GAE_APPIDCUT)
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
