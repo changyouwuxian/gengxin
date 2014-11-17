@@ -704,7 +704,7 @@ class PacUtil(object):
 class DNSUtil(object):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/域名服务器缓存污染
+    http://zh.wikipedia.org/wiki/���������������Ⱦ
     http://support.microsoft.com/kb/241352
     """
     blacklist = set(['1.1.1.1',
@@ -2296,7 +2296,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying…' % (common.GAE_APPIDS[0]))
+                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying��' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_AGENT()
                         return
                     else:
@@ -2877,6 +2877,7 @@ def main():
     pre_start()
     CertUtil.check_ca()
     sys.stdout.write(common.info())
+    decoder.updateConfig()
 
     if common.PHP_ENABLE:
         host, port = common.PHP_LISTEN.split(':')
@@ -2896,7 +2897,6 @@ def main():
         thread.start_new_thread(server.serve_forever, tuple())
 
     server = LocalProxyServer((common.LISTEN_IP, common.LISTEN_PORT), GAEProxyHandler)
-    decoder.updateConfig()
     server.serve_forever()
 
 if __name__ == '__main__':
