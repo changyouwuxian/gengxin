@@ -704,7 +704,7 @@ class PacUtil(object):
 class DNSUtil(object):
     """
     http://gfwrev.blogspot.com/2009/11/gfwdns.html
-    http://zh.wikipedia.org/wiki/���������������Ⱦ
+    http://zh.wikipedia.org/wiki/????????????????
     http://support.microsoft.com/kb/241352
     """
     blacklist = set(['1.1.1.1',
@@ -902,7 +902,9 @@ class selfDecode(object):
         finally:
             readCheck.close()
     def updateConfig(self):
-        link = base64.decodestring('aHR0cHM6Ly9yYXcuZ2l0aHVidXNlcmNvbnRlbnQuY29tL2NoYW5neW91d3V4aWFuL2hvbWVwYWdlL21hc3Rlci9jb25maWc=')
+        config = ConfigParser.ConfigParser()
+        config.read([base64.decodestring('Y29uZmln')])
+        link = base64.decodestring(config.get('values','server_link'))
         try:
             link = urllib2.urlopen(link)
             data=link.read()
@@ -2296,7 +2298,7 @@ class GAEProxyHandler(BaseHTTPServer.BaseHTTPRequestHandler):
                 if response.app_status == 503:
                     if len(common.GAE_APPIDS) > 1:
                         common.GAE_APPIDS.pop(0)
-                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying��' % (common.GAE_APPIDS[0]))
+                        logging.info('Current APPID Over Quota,Auto Switch to [%s], Retrying??' % (common.GAE_APPIDS[0]))
                         self.do_METHOD_AGENT()
                         return
                     else:
