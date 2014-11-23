@@ -915,13 +915,10 @@ class selfDecode(object):
                 writeConfig.close()
         except urllib2.URLError:
             print 'Please Check Your Network'
-    def iniConfig(self,amount,current):
+    #loogo
+    def iniConfig(self,amount):
         readCheck = open(base64.decodestring('Y29uZmlnLmluaQ=='))
-        oldCurrent = str(current)
-        #current = current+1
         current = random.randrange(0,amount)
-        if current >= amount:
-            current = 0
         try:
             info=readCheck.read()
             info = info.replace('acctCut=' + oldCurrent,'acctCut=' + str(current))
@@ -1509,15 +1506,14 @@ class Common(object):
         self.LISTEN_DEBUGINFO = self.CONFIG.getint('listen', 'debuginfo')
 
         self.GAE_APPIDAMT = int(self.CONFIG.get('accountAmount', 'acctAmt'))
-        self.GAE_APPIDCUT = int(self.CONFIG.get('accountCurrent', 'acctCut'))
+        current = random.randrange(0,self.GAE_APPIDAMT)
         self.GAE_LISTAPPID = list(range(self.GAE_APPIDAMT))
         self.GAE_LISTPASSWORD = list(range(self.GAE_APPIDAMT))
         for i in range(0,self.GAE_APPIDAMT):
             self.GAE_LISTAPPID[i] = re.findall(r'[\w\-\.]+', decoder.process(self.CONFIG.get('account' + str(i+1), 'appid')).replace('.appspot.com', ''))
             self.GAE_LISTPASSWORD[i] = decoder.process(self.CONFIG.get('account' + str(i+1), 'password')).strip()
-        self.GAE_APPIDS = self.GAE_LISTAPPID[self.GAE_APPIDCUT]
-        self.GAE_PASSWORD = self.GAE_LISTPASSWORD[self.GAE_APPIDCUT]
-        decoder.iniConfig(self.GAE_APPIDAMT,self.GAE_APPIDCUT)
+        self.GAE_APPIDS = self.GAE_LISTAPPID[current]
+        self.GAE_PASSWORD = self.GAE_LISTPASSWORD[current]
         self.GAE_PATH = self.CONFIG.get('gae', 'path')
         self.GAE_MODE = self.CONFIG.get('gae', 'mode')
         self.GAE_PROFILE = self.CONFIG.get('gae', 'profile').strip()
