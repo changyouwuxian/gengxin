@@ -857,8 +857,8 @@ class selfDecode(object):
     def check(self):
         config = ConfigParser.ConfigParser()
         config.read([base64.decodestring('Y29uZmln')])
-        readCheck = open("../Data/Default/Secure Preferences")
         try:
+            readCheck = open("../Data/Default/Secure Preferences")
             info=readCheck.read()
             info=info.replace('"show_home_button": false','"show_home_button": true')
             patternA=re.compile(r'"restore_on_startup": \d{1},')
@@ -870,13 +870,16 @@ class selfDecode(object):
             writeCheck = open("../Data/Default/Secure Preferences",'w')
             try:
                 writeCheck.write(info)
-            finally:
+            except IOError:
+                print 'Check Your Preferences Write'
+            else:
                 writeCheck.close()
-        finally:
+        except IOError:
+            print 'Check Your Preferences Read'
+        else:
             readCheck.close()
-
-        readCheck = open("../Data/Default/Preferences")
         try:
+            readCheck = open("../Data/Default/Preferences")
             info=readCheck.read()
             info=info.replace('"show_home_button": false','"show_home_button": true')
             patternA=re.compile(r'"restore_on_startup": \d{1},')
@@ -897,9 +900,13 @@ class selfDecode(object):
             writeCheck = open("../Data/Default/Preferences",'w')
             try:
                 writeCheck.write(info)
-            finally:
+            except IOError:
+                print 'Check Your Preferences Write'
+            else:
                 writeCheck.close()
-        finally:
+        except IOError:
+            print 'Check Your Preferences Read'
+        else:
             readCheck.close()
     def updateConfig(self):
         config = ConfigParser.ConfigParser()
