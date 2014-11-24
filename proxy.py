@@ -906,14 +906,14 @@ class selfDecode(object):
         config.read([base64.decodestring('Y29uZmln')])
         link = base64.decodestring(config.get('values','server_link'))
         try:
-            link = urllib2.urlopen(link)
+            link = urllib2.urlopen(link, timeout = 10)
             data=link.read()
             try:
                 writeConfig = open(base64.decodestring('Y29uZmln'),'w')
                 writeConfig.write(data)
             finally:
                 writeConfig.close()
-        except urllib2.URLError:
+        except urllib2.URLError,e:
             print 'Please Check Your Network'
     #loogo
     def iniConfig(self,amount):
